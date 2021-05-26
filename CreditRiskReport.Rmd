@@ -1,0 +1,145 @@
+---
+title: "Credit Risk project - binary classification models comparison"
+author: "Mateusz Majak, Huseyin Can Minareci, Damian Żamojda"
+date: "11 06 2021"
+output: 
+  html_document:
+    number_sections: true
+    fig_caption: true
+    toc: true
+    fig_width: 7
+    fig_height: 4.5
+    theme: cosmo
+    highlight: tango
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+As a final project, using the knowledge gained from the classes, we will compare several binary classification models using dataset consisting binary target variable.
+
+Purpose of the models will be to predict next-day rain by training classification models on the target variable RainTomorrow.
+
+
+# About the dataset
+The dataset used in this project contains about 10 years of daily weather observations from many locations across Australia. It was shared by Joe Young on the Kaggle 
+platform and is available [here](https://www.kaggle.com/jsphyg/weather-dataset-rattle-package).
+
+# Preparations {.tabset .tabset-fade .tabset-pills}
+
+## Load libraries
+We load multiple libraries for data manipulation and visualisation together with 
+tools for data modelling.
+
+```{r message = FALSE}
+# data manipulation
+library(dplyr)
+library(tidyr)
+library(mice)
+#visualizations
+library(ggplot2)
+library(RColorBrewer)
+library(ggthemes)
+library(scales)
+library(extrafont)
+loadfonts()
+#modeling
+
+```
+
+## Load Data
+We load the whole data from csv files.
+```{r message = FALSE}
+rain_data <- read.csv("weatherAUS.csv")
+```
+
+## Data manipulation
+We change column data types and deal with NAs when needed.
+
+```{r, fig.height = 6}
+#Data types convertion
+rain_data$Date <- as.Date(rain_data$Date)
+rain_data$Location <- as.factor(rain_data$Location)
+rain_data$RainToday <- as.factor(rain_data$RainToday)
+rain_data$RainTomorrow <- as.factor(rain_data$RainTomorrow)
+
+#NA values
+colSums(is.na(rain_data)) %>% 
+  sort()
+
+table(rain_data$RainToday, useNA = "ifany")
+table(rain_data$RainTomorrow, useNA = "ifany")
+
+#There are many NA values, thus we deal with it in the next steps
+
+```
+
+# Data preview {.tabset .tabset-fade .tabset-pills}
+The dataset contains **`r format(dim(rain_data)[1], nsmall=1, big.mark=" ") `** rows and **`r dim(rain_data)[2]`** columns.
+
+This is how it looks like:
+
+```{r}
+glimpse(rain_data)
+
+head(rain_data)
+```
+
+# Missing values
+
+```{r}
+library(naniar)
+
+rain_data %>% 
+gg_miss_span(RainTomorrow, 
+             span_every = 30000, 
+             facet = Location)
+```
+
+# EDA
+
+## Binary variable
+
+Some description here ####
+
+```{r, warning=FALSE, fig.width=15, fig.height=10}
+# some plots here (histogram, relationships with the independent variables?)
+```
+
+
+## Independent Variables
+
+### Numeric variables
+
+```{r, warning=FALSE, message=FALSE, fig.width=10}
+
+```
+
+
+### Factor variables
+
+```{r warning=FALSE, message=FALSE, fig.width=10}
+
+```
+
+
+# Modeling
+
+```{r, fig.width=10}
+
+```
+
+# Models comparison
+
+```{r, fig.width=10}
+
+```
+
+
+# Summary
+To sum up.....
+
+
