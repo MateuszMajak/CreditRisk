@@ -41,13 +41,16 @@ library(tidyr)
 library(mice)
 #visualizations
 library(ggplot2)
-library(RColorBrewer)
 library(ggthemes)
 library(scales)
 library(extrafont)
+library(viridis)
 loadfonts()
+library(gridExtra)
+library(grid)
 #modeling
-
+library(caret)
+library(corrplot)
 ```
 
 ## Load Data
@@ -65,7 +68,9 @@ rain_data$Date <- as.Date(rain_data$Date)
 rain_data$Location <- as.factor(rain_data$Location)
 rain_data$RainToday <- as.factor(rain_data$RainToday)
 rain_data$RainTomorrow <- as.factor(rain_data$RainTomorrow)
-
+rain_data$WindGustDir <- as.factor(rain_data$WindGustDir)
+rain_data$WindDir9am <- as.factor(rain_data$WindDir9am)
+rain_data$WindDir3pm <- as.factor(rain_data$WindDir3pm)
 #NA values
 colSums(is.na(rain_data)) %>% 
   sort()
@@ -121,34 +126,213 @@ gg_miss_fct(x = rain_data, fct = Location) + labs(title = "NA values in per each
 
 It seems there are a lot of NA values in Sunshine, Evaporation, Cloud9am and Cloud3pm columns.
 
+# Data division
+
+```{r}
+set.seed(987654321)
+
+rain_which_train <- createDataPartition(rain_data$RainTomorrow,
+                                          p = 0.7, 
+                                          list = FALSE) 
+
+rain_train <- rain_data[rain_which_train,]
+rain_test <- rain_data[-rain_which_train,]
+
+prop.table(table(rain_data$RainTomorrow))
+prop.table(table(rain_train$RainTomorrow))
+prop.table(table(rain_test$RainTomorrow))
+
+```
+
+Proportion of target variable didn't significantly change after splitting the dataset.
+
 # EDA
 
-## Binary variable
+## Variables division by type
 
-Some description here ####
+We group variables by type and save them into list to analyze them later.
 
 ```{r, warning=FALSE}
 # some plots here (histogram, relationships with the independent variables?)
-ggplot(rain_data,
-       aes(x = Rainfall)) +
-  geom_histogram(fill = "blue",
-                 bins = 100) +
-  theme_bw()
+rain_numeric_vars <- 
+  sapply(rain_train, is.numeric) %>% 
+  which() %>% 
+  names()
+
+rain_factor_vars <- 
+  sapply(rain_train, is.factor) %>% 
+  which() %>% 
+  names()
+
+rain_factor_vars <- rain_factor_vars[1:5]
+
+rain_numeric_vars
+rain_factor_vars
+
 ```
 
+## Correlation
+
+```{r}
+rain_correlations <- 
+  cor(rain_train[,rain_numeric_vars],
+      use = "pairwise.complete.obs")
+
+rain_numeric_vars_order <- 
+  rain_train[,"RainTomorrow"] %>% 
+  sort(decreasing = TRUE) %>%
+  names()
+
+corrplot.mixed(rain_correlations,
+               upper = "circle",
+               lower = "pie",
+               tl.col="black",
+               tl.pos = "lt",
+               tl.cex = 0.6)
+```
+
+We can see that there are a few groups of variables highly correlated with each other.
+Temp3am, Temp9am, MinTemp and MaxTemp are positively correlated which is quite intuitive.
+Pressure3pm is positively correlated with Pressure9am which is also intuitive.
+Finally, Cloud9am and Cloud3pm are negatively correlated with Sunshine, which is intuitive as well.
+
+## Dependent variable
+
+```{r}
+ggplot(rain_train) + geom_bar(aes(x = RainTomorrow))
+```
+
+Variable is unbalanced, we will consider dealing with it later.
 
 ## Independent Variables
 
 ### Numeric variables
 
-```{r, warning=FALSE, message=FALSE, fig.width=10}
+```{r, warning=FALSE, message=FALSE, fig.height=25, fig.width=10}
+p1 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=MinTemp, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
 
+p2 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=MaxTemp, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+p3 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=Rainfall, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+p4 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=Evaporation, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+p5 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=Sunshine, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+p6 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=WindGustSpeed, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+p7 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=WindSpeed9am, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+p8 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=WindSpeed3pm, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+p9 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=Humidity9am, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+p10 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=Humidity3pm, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+p11 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=Pressure9am, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+p12 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=Pressure3pm, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+p13 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=Cloud9am, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+p14 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=Cloud3pm, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+p15 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=Temp9am, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+p16 <- 
+  rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(x=RainTomorrow, y=Temp3pm, fill= RainTomorrow)) + geom_violin() + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+
+
+grid.arrange(p1, p2, p3, p4, p5, p6, p7, p8, 
+             p9, p10, p11, p12, p13, p14, p15, p16, 
+             nrow = 8, ncol = 2)
 ```
-
+We can visually recognize differences between distributions of Sunshine, Cloud9am,
+Cloud3pm and humidity variables with the target variable on the x axis.
 
 ### Factor variables
 
-```{r warning=FALSE, message=FALSE, fig.width=10}
+```{r warning=FALSE, message=FALSE, fig.width=10, fig.height=20}
+fp1 <- rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(fill = RainTomorrow)) + 
+  geom_bar(aes(y = Location)) +
+  scale_x_discrete(expand = c(0, 0)) + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+fp2 <- rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(fill = RainTomorrow)) + 
+  geom_bar(aes(y = WindGustDir)) +
+  scale_x_discrete(expand = c(0, 0)) + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+fp3 <- rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(fill = RainTomorrow)) + 
+  geom_bar(aes(y = WindDir9am)) +
+  scale_x_discrete(expand = c(0, 0)) + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+fp4 <- rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(fill = RainTomorrow)) + 
+  geom_bar(aes(y = WindDir3pm)) +
+  scale_x_discrete(expand = c(0, 0)) + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+fp5 <- rain_train %>% 
+  dplyr::filter(!is.na(RainTomorrow)) %>% 
+  ggplot(aes(fill = RainTomorrow)) + 
+  geom_bar(aes(y = RainToday)) +
+  scale_x_discrete(expand = c(0, 0)) + scale_fill_viridis(discrete=TRUE, option="viridis") + scale_color_viridis(option="viridis") +  theme_bw()
+
+grid.arrange(fp1, fp2, fp3, fp4, fp5, 
+             nrow = 3, ncol = 2)
 
 ```
 
