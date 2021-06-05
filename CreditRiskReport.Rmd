@@ -90,6 +90,7 @@ head(rain_data)
 
 # Missing values
 
+
 ```{r}
 library(naniar)
 
@@ -99,14 +100,40 @@ gg_miss_span(RainTomorrow,
              facet = Location)
 ```
 
+There are 2 cities containing significant number of missing values in dependent variable: Melbourne and Williamtown.
+We consider removing all rows with the data from these cities or just rows with NA values.
+For now we will keep all the data, but we save information about rows with the null dependent variable.
+
+``` {r}
+
+NA_cities <- which(is.na(rain_data$RainTomorrow))
+rain_data[NA_cities[1:10],]
+
+
+```
+
+Additionally, we check other variables for missing values.
+
+``` {r}
+gg_miss_fct(x = rain_data, fct = Location) + labs(title = "NA values in per each variable and city")
+
+```
+
+It seems there are a lot of NA values in Sunshine, Evaporation, Cloud9am and Cloud3pm columns.
+
 # EDA
 
 ## Binary variable
 
 Some description here ####
 
-```{r, warning=FALSE, fig.width=15, fig.height=10}
+```{r, warning=FALSE}
 # some plots here (histogram, relationships with the independent variables?)
+ggplot(rain_data,
+       aes(x = Rainfall)) +
+  geom_histogram(fill = "blue",
+                 bins = 100) +
+  theme_bw()
 ```
 
 
