@@ -26,7 +26,7 @@ Purpose of the models will be to predict next-day rain by training classificatio
 
 # About the dataset
 The dataset used in this project contains about 10 years of daily weather observations from many locations across Australia. It was shared by Joe Young on the Kaggle 
-platform and is available [here](https://www.kaggle.com/jsphyg/weather-dataset-rattle-package).
+platform and is available [here](`https://www.kaggle.com/jsphyg/weather-dataset-rattle-package`).
 
 # Preparations {.tabset .tabset-fade .tabset-pills}
 
@@ -36,7 +36,7 @@ tools for data modelling.
 
 ```{r message = FALSE}
 # data manipulation
-library(dplyr)
+library(tidyverse)
 library(tidyr)
 library(mice)
 #visualizations
@@ -339,15 +339,219 @@ grid.arrange(fp1, fp2, fp3, fp4, fp5,
 
 # Modeling
 
-```{r, fig.width=10}
+## Data Preparation
 
+```{r}
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+rain_train$MinTemp <- replace_na(rain_train$MinTemp, mean(rain_train$MinTemp, na.rm=TRUE))
+rain_train$MaxTemp <- replace_na(rain_train$MaxTemp, mean(rain_train$MaxTemp, na.rm=TRUE))
+rain_train$Rainfall <- replace_na(rain_train$Rainfall, mean(rain_train$Rainfall, na.rm=TRUE))
+rain_train$Evaporation <- replace_na(rain_train$Evaporation, mean(rain_train$Evaporation, na.rm=TRUE))
+rain_train$Sunshine <- replace_na(rain_train$Sunshine, mean(rain_train$Sunshine, na.rm=TRUE))
+rain_train$WindGustDir <- replace_na(rain_train$WindGustDir, getmode(rain_train$WindGustDir))
+rain_train$WindGustSpeed <- replace_na(rain_train$WindGustSpeed, mean(rain_train$WindGustSpeed, na.rm=TRUE))
+rain_train$WindDir9am <- replace_na(rain_train$WindDir9am, getmode(rain_train$WindDir9am))
+rain_train$WindDir3pm <- replace_na(rain_train$WindDir3pm, getmode(rain_train$WindDir3pm))
+rain_train$WindSpeed9am <- replace_na(rain_train$WindSpeed9am, mean(rain_train$WindSpeed9am, na.rm=TRUE))
+rain_train$WindSpeed3pm <- replace_na(rain_train$WindSpeed3pm, mean(rain_train$WindSpeed3pm, na.rm=TRUE))
+rain_train$Humidity9am <- replace_na(rain_train$Humidity9am, mean(rain_train$Humidity9am, na.rm=TRUE))
+rain_train$Pressure9am <- replace_na(rain_train$Pressure9am, mean(rain_train$Pressure9am, na.rm=TRUE))
+rain_train$Cloud9am <- replace_na(rain_train$Cloud9am, mean(rain_train$Cloud9am, na.rm=TRUE))
+rain_train$Cloud3pm <- replace_na(rain_train$Cloud3pm, mean(rain_train$Cloud3pm, na.rm=TRUE))
+rain_train$Temp9am <- replace_na(rain_train$Temp9am, mean(rain_train$Temp9am, na.rm=TRUE))
+rain_train$Temp3pm <- replace_na(rain_train$Temp3pm, mean(rain_train$Temp3pm, na.rm=TRUE))
+rain_train$RainToday <- replace_na(rain_train$RainToday, getmode(rain_train$RainToday))
+rain_train <- rain_train %>% filter(!is.na(rain_train$RainTomorrow))
+sapply(rain_train, function(x) sum(is.na(x)))
+
+rain_test$MinTemp <- replace_na(rain_test$MinTemp, mean(rain_test$MinTemp, na.rm=TRUE))
+rain_test$MaxTemp <- replace_na(rain_test$MaxTemp, mean(rain_test$MaxTemp, na.rm=TRUE))
+rain_test$Rainfall <- replace_na(rain_test$Rainfall, mean(rain_test$Rainfall, na.rm=TRUE))
+rain_test$Evaporation <- replace_na(rain_test$Evaporation, mean(rain_test$Evaporation, na.rm=TRUE))
+rain_test$Sunshine <- replace_na(rain_test$Sunshine, mean(rain_test$Sunshine, na.rm=TRUE))
+rain_test$WindGustDir <- replace_na(rain_test$WindGustDir, getmode(rain_test$WindGustDir))
+rain_test$WindGustSpeed <- replace_na(rain_test$WindGustSpeed, mean(rain_test$WindGustSpeed, na.rm=TRUE))
+rain_test$WindDir9am <- replace_na(rain_test$WindDir9am, getmode(rain_test$WindDir9am))
+rain_test$WindDir3pm <- replace_na(rain_test$WindDir3pm, getmode(rain_test$WindDir3pm))
+rain_test$WindSpeed9am <- replace_na(rain_test$WindSpeed9am, mean(rain_test$WindSpeed9am, na.rm=TRUE))
+rain_test$WindSpeed3pm <- replace_na(rain_test$WindSpeed3pm, mean(rain_test$WindSpeed3pm, na.rm=TRUE))
+rain_test$Humidity9am <- replace_na(rain_test$Humidity9am, mean(rain_test$Humidity9am, na.rm=TRUE))
+rain_test$Pressure9am <- replace_na(rain_test$Pressure9am, mean(rain_test$Pressure9am, na.rm=TRUE))
+rain_test$Cloud9am <- replace_na(rain_test$Cloud9am, mean(rain_test$Cloud9am, na.rm=TRUE))
+rain_test$Cloud3pm <- replace_na(rain_test$Cloud3pm, mean(rain_test$Cloud3pm, na.rm=TRUE))
+rain_test$Temp9am <- replace_na(rain_test$Temp9am, mean(rain_test$Temp9am, na.rm=TRUE))
+rain_test$Temp3pm <- replace_na(rain_test$Temp3pm, mean(rain_test$Temp3pm, na.rm=TRUE))
+rain_test$RainToday <- replace_na(rain_test$RainToday, getmode(rain_test$RainToday))
+rain_test <- rain_test %>% filter(!is.na(rain_test$RainTomorrow))
+sapply(rain_test, function(x) sum(is.na(x)))
 ```
+
+```{r message=FALSE, echo=FALSE, warning=FALSE, results='hide'}
+colnames(rain_train)
+
+model.formula <- RainTomorrow ~ MinTemp + MaxTemp + Rainfall + Evaporation + Sunshine + WindGustSpeed + WindDir9am + WindDir3pm + WindSpeed9am + WindSpeed3pm + Humidity9am + Pressure9am + Cloud9am + Cloud3pm + Temp9am + Temp3pm + RainToday
+```
+
+
+## GBM
+
+The range of parameters for Cross-Validation was adopted as below and the training of the model was started.
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+parameters_gbm <- expand.grid(interaction.depth = c(1, 2, 3),
+                             n.trees = c(100, 500),
+                             shrinkage = c(0.01, 0.1), 
+                             n.minobsinnode = c(100, 250, 500))
+ctrl_cv3 <- trainControl(method = "cv", 
+                         number = 3,
+                         classProbs = TRUE,
+                         summaryFunction = twoClassSummary)
+```
+
+```{r message=FALSE, echo=FALSE, warning=FALSE, results='hide'}
+library(gbm)
+library(xgboost)
+library(here)
+if (0) {
+  set.seed(123456789)
+  
+  Rain.gbm  <- train(model.formula,
+                         data = rain_train,
+                         distribution = "bernoulli",
+                         method = "gbm",
+                         tuneGrid = parameters_gbm,
+                         trControl = ctrl_cv3,
+                         verbose = FALSE)
+  
+  saveRDS(object = Rain.gbm,
+          file   = here("Rain.gbm.rds"))
+}
+Rain.gbm <- readRDS(here("Rain.gbm.rds"))
+Rain.gbm
+```
+
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+rain.pred.train.gbm <- predict(Rain.gbm,
+                                  rain_train, 
+                                  type = "prob",
+                                  n.trees = 500)
+
+rain.pred.test.gbm <- predict(Rain.gbm,
+                                 rain_test, 
+                                 type = "prob",
+                                 n.trees = 500)
+```
+
+### Results
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+ROC.train.gbm <- 
+  pROC::roc(rain_train$RainTomorrow, 
+            rain.pred.train.gbm$Yes)
+ROC.test.gbm  <- 
+  pROC::roc(rain_test$RainTomorrow, 
+            rain.pred.test.gbm$Yes)
+library(pROC)
+list(
+  ROC.train.gbm = ROC.train.gbm,
+  ROC.test.gbm  = ROC.test.gbm
+) %>%
+  pROC::ggroc(alpha = 0.5, linetype = 1, size = 1) + 
+  geom_segment(aes(x = 1, xend = 0, y = 0, yend = 1), 
+               color = "grey", 
+               linetype = "dashed") +
+  labs(subtitle = paste0("Gini TRAIN: ",
+                         "gbm = ", 
+                         round(100 * (2 * auc(ROC.train.gbm) - 1), 1), "%, ",
+                         "Gini TEST: ",
+                         "gbm = ", 
+                         round(100 * (2 * auc(ROC.test.gbm) - 1), 1), "%, "
+  )) +
+  theme_bw() + coord_fixed() +
+  scale_color_brewer(palette = "Paired")
+```
+
+## XGBoost
+
+
+Due to the unsatisfactory effects on the default parameters, it was decided to tune the XGBoost model. The process began with finding the optimal minimal child weight and then jumped to other ones. 
+
+In the next steps, a wide variety of parameters were used for validation and proceeded with the most efficient one while changing the validated parameter for the very next one.
+
+The final version of the model is presented in the code below.
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+parameters_xgb <- expand.grid(nrounds = 100,
+                             max_depth = 6,
+                             eta = 0.3, 
+                             gamma = 0,
+                             colsample_bytree = 1,
+                             min_child_weight = 1,
+                             subsample = 0.9)
+ctrl_cv3 <- trainControl(method = "cv", 
+                         number = 3,
+                         classProbs = TRUE,
+                         summaryFunction = twoClassSummary)
+```
+
+```{r message=FALSE, warning=FALSE}
+if (0) {
+  Rain.xgb <- train(model.formula,
+                     data = rain_train,
+                     method = "xgbTree",
+                     trControl = ctrl_cv3,
+                     tuneGrid  = parameters_xgb)
+  Rain.xgb
+  Rain.xgb %>% saveRDS(here("Rain.xgb.rds"))
+}
+Rain.xgb <- readRDS(here("Rain.xgb.rds"))
+Rain.xgb
+```
+
+### Results
+
+After several attempts, it was possible to obtain the most optimal model.
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+Rain.train.xgb <- pROC::roc(rain_train$RainTomorrow, 
+                           predict(Rain.xgb,
+                                   rain_train, 
+                                   type = "prob",
+                                   n.trees = 500)[, "Yes"])
+
+
+Rain.test.xgb  <- pROC::roc(rain_test$RainTomorrow, 
+                           predict(Rain.xgb,
+                                   rain_test, 
+                                   type = "prob",
+                                   n.trees = 500)[, "Yes"])
+
+list(
+  Rain.train.xgb = Rain.train.xgb,
+  Rain.test.xgb = Rain.test.xgb
+) %>%
+  pROC::ggroc(alpha = 0.5, linetype = 1, size = 1) + 
+  geom_segment(aes(x = 1, xend = 0, y = 0, yend = 1), 
+               color = "grey", 
+               linetype = "dashed") +
+  labs(subtitle = paste0("Gini TRAIN: ",
+                         "xgb = ", 
+                         round(100 * (2 * auc(Rain.train.xgb) - 1), 1), "%, ",
+                         "TEST: ",
+                         "xgb = ", 
+                         round(100 * (2 * auc(Rain.test.xgb) - 1), 1), "%")) +
+  theme_bw() + coord_fixed() +
+  scale_color_brewer(palette = "Paired")
+```
+
+
 
 # Models comparison
-
-```{r, fig.width=10}
-
-```
 
 
 # Summary
