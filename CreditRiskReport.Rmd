@@ -51,6 +51,9 @@ library(grid)
 #modeling
 library(caret)
 library(corrplot)
+library(gbm)
+library(xgboost)
+library(here)
 ```
 
 ## Load Data
@@ -412,10 +415,8 @@ ctrl_cv3 <- trainControl(method = "cv",
                          summaryFunction = twoClassSummary)
 ```
 
-```{r message=FALSE, echo=FALSE, warning=FALSE, results='hide'}
-library(gbm)
-library(xgboost)
-library(here)
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+
 if (0) {
   set.seed(123456789)
   
@@ -449,6 +450,7 @@ rain.pred.test.gbm <- predict(Rain.gbm,
 
 ### Results
 
+#### Gini 
 ```{r message=FALSE, echo=FALSE, warning=FALSE}
 ROC.train.gbm <- 
   pROC::roc(rain_train$RainTomorrow, 
@@ -475,6 +477,41 @@ list(
   theme_bw() + coord_fixed() +
   scale_color_brewer(palette = "Paired")
 ```
+
+Because of unbalanced data we decided to take the geometric mean of sensitivity and specificity in order to find the balance between them, so we could have the most desirable threshold.
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+gmeans.gbm <- sqrt(ROC.test.gbm$sensitivities * ROC.test.gbm$specificities)
+opt.th.gbm <- ROC.test.gbm$thresholds[which.max(gmeans.gbm)]
+opt.th.gbm
+```
+
+After finding the optimal threshold we decided to classify predictions 1 and 0 with that threshold in order to calculate the confusion matrix and evaluate our model.
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+rain.pred.test.gbm.bin <- ifelse(rain.pred.test.gbm$Yes>opt.th.gbm,1,0)
+
+rain_test_bin <- ifelse(rain_test$RainTomorrow=="Yes",1,0)
+```
+
+
+#### Confusion Matrix
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+gbm.cm <- confusionMatrix(factor(rain.pred.test.gbm.bin), factor(rain_test_bin))
+gbm.cm
+prec.gbm <- gbm.cm$table[2,2] / (gbm.cm$table[2,2] + gbm.cm$table[2,1])
+recall.gbm <- gbm.cm$table[2,2] / (gbm.cm$table[2,2] + gbm.cm$table[1,2])
+f1.gbm <- 2 * ((prec.gbm * recall.gbm) / (prec.gbm + recall.gbm))
+```
+
+We can see from our confusion matrix that the accuracy of the model is 78%, Sensitivity 0.7845 and Specificity : 0.7667. Kappa coefficient is 0.4662 which indicates there is moderate agreement between frequencies of two sets of data.  
+
+Precision: `r gbm.cm$byClass[5] `  
+Recall: `r gbm.cm$byClass[6] `  
+F-1 Score: `r gbm.cm$byClass[7] `  
+  
+
 
 ## XGBoost
 
@@ -513,7 +550,21 @@ Rain.xgb <- readRDS(here("Rain.xgb.rds"))
 Rain.xgb
 ```
 
+```{r message=FALSE, warning=FALSE, results='hide'}
+rain.pred.train.xgb <- predict(Rain.xgb,
+                                  rain_train, 
+                                  type = "prob",
+                                  n.trees = 500)
+
+rain.pred.test.xgb <- predict(Rain.xgb,
+                                 rain_test, 
+                                 type = "prob",
+                                 n.trees = 500)
+```
+
 ### Results
+
+#### Gini
 
 After several attempts, it was possible to obtain the most optimal model.
 
@@ -549,12 +600,64 @@ list(
   scale_color_brewer(palette = "Paired")
 ```
 
+We will take the geometric mean in order to find the balance between the sensitivity and the specificity, so we could have the most desirable threshold.
 
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+gmeans.xgb <- sqrt(Rain.test.xgb$sensitivities * Rain.test.xgb$specificities)
+opt.th.xgb <- Rain.test.xgb$thresholds[which.max(gmeans.xgb)]
+opt.th.xgb
+```
+
+After finding the optimal threshold we decided to classify predictions 1 and 0 with that threshold in order to calculate the confusion matrix and evaluate our model.
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+rain.pred.test.xgb.bin <- ifelse(rain.pred.test.xgb$Yes>opt.th.xgb,1,0)
+
+rain_test_bin <- ifelse(rain_test$RainTomorrow=="Yes",1,0)
+```
+
+
+#### Confusion Matrix
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+xgb.cm <- confusionMatrix(factor(rain.pred.test.xgb.bin), factor(rain_test_bin))
+xgb.cm
+
+```
+
+We can see from our confusion matrix that the accuracy of the model is 77.3%, Sensitivity 0.7845 and Specificity : 0.7667. Kappa coefficient is 0.4671 which indicates there is moderate agreement between frequencies of two sets of data.
+
+Precision: `r xgb.cm$byClass[5] `  
+Recall: `r xgb.cm$byClass[6] `  
+F-1 Score: `r xgb.cm$byClass[7] `  
 
 # Models comparison
 
 
-# Summary
-To sum up.....
+Both GBM and XGBoost follows the principle of gradient boosting. There are some difference in modeling details. XGBoost uses a more regularized model formalization to control over-fitting, which gives it better performance than GBM.
 
+Another difference is that XGBoost using less computations resources for boosted tree algorithms. And that is also one of the main reason why it is so popular.
+
+In the following table we can see how 2 model performed in our dataset with the following scores.
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+
+comparison <- data.frame(
+  GBM = c(ROC.test.gbm$auc, gbm.cm$overall[1],gbm.cm$byClass[7],gbm.cm$byClass[1],gbm.cm$byClass[2], gbm.cm$overall[2],gbm.cm$byClass[5],gbm.cm$byClass[6]),
+  XGBoost = c(Rain.test.xgb$auc, xgb.cm$overall[1],xgb.cm$byClass[7],xgb.cm$byClass[1],xgb.cm$byClass[2], xgb.cm$overall[2],xgb.cm$byClass[5],xgb.cm$byClass[6])
+
+)
+# rownames(comparison)[1] <- "Threshold"
+rownames(comparison)[1] <- "Area Under the Curve (AUC)"
+df <- data.frame(GBM = opt.th.gbm, XGBoost = opt.th.xgb,row.names = "Threshold")
+comparison <- rbind(df,comparison)
+comparison
+```
+
+
+# Summary
+
+To sum up, in this project we tried to find out which model would perform better on predicting if it is going to rain next day or not based on the dataset from many locations across Australia 10 years of daily weather observations. We used GBM and XGBoost models to do the predictions, ROC curve to find the best threshold and Area Under Curve (AUC), Accuracy, F1 Score, Sensitivity, Specificity, Precision and Recall to evaluate the models. 
+
+According to the results we found out that based in AUC, XGBoost performs better than GBM. If it comes to performance with the optimum thresholds GBM get better scores in Accuracy, F1, Sensitivity and Recall while XGBoost got better scores on Specificity and Precision. In our case we decided to have more balanced and that's why we used geometric mean but threshold can be changed and set up in order to get more true positives or true negatives but every cases would have some penalty which would en up with having either more False negatives or more false positives. 
 
